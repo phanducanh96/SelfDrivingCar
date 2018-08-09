@@ -61,7 +61,7 @@ class ReplayMemory(object):
     #event contains four elements. First one is the last state, second one new state, third one
     #last action, last one is the last reward
     #We need to push event to the memory up there
-   def push(self, event):     
+    def push(self, event):     
         self.memory.append(event)
         #if the capacity of the mem go over the capacity that allows, we delete the first element,
         #which is the last state to balance out the number
@@ -78,10 +78,10 @@ class ReplayMemory(object):
         samples = zip(*random.sample(self.memory, batchSize))
         
         #lambda function will take the samples, concatinate them with the first dimension 0 to align
-        #all the element of the sample together. Then we convert the tensor into som torch variables that
+        #all the element of the sample together. Then we convert the tensor into some torch variables that
         #contain both tensors and the gradient
         #So that later when we applying the gradient descent, we can differentiate to update the weights
-        return map(lambda x: Variable(cat(x, 0)), samples)
+        return map(lambda x: Variable(torch.cat(x, 0)), samples)
     
 #Implementing Deep Q Learning
 class Dqn():
@@ -115,9 +115,57 @@ class Dqn():
         self.last_action = 0
         self.last_reward = 0
         
+    def select_action(self, state):
+        #Soft max function (best action to play but at the same time, explore other actions)
+        #We convert the torch tensor state to a tensor variable
+        #We dont want all the gradient and graph of all computation of the nn module; so we add volitile = true
+        #Save memory and performance
+        probs = F.softmax(self.model(Variable(state), volatile = True)*7) 
         
+        #Temperature = 7
+        #Temperature variable represents the certainty of which action is going to play
+        #Example, we have softmax([1,2,3]*1) = [0.04, 0.11, 0.850]. Then increasing temp to 3 we have
+        #softmax([1,2,3]*3) = [0, 0.02, 0.98]
         
+        #We get random draw from the probability
+        action = probs.multinomial()
+        #Do this to select the correct dimension, not the fake dimension that corressponding to
+        #the batch
+        return action.data[0,0]
+    
+    def learn(self, batchSize, batchNextState, batchReward, batchAction):
+        #We only want 1 action, the chosen one so we use the function gather
+        #Batch Action doesnt have a fake dimension; so we want to add into it so it can match with
+        #the batch state
+        #but then we want the output not being in a batch but a simple form, a variable tensor
+        #we have to kill the fake dimension by squeeze function
         
+        #output = previous state
+        outputs = self.model(batchState).gather(1, batchAction.unsqueeze(1)).squeeze(1)
+        
+        #next output = current state
+        #We use detach all of the outputs due to the states and transitions to take the max of the
+        #Q value. The action is represented in index 1, we use 1 and the state is represendted in
+        #index 0, we use 0 to get the max of the q values of the enxt state
+        nextOutput = self.model(batchNextState).detach().max(1)[0]
+        
+        #Equation in the AI handbook
+        target = self.gamma*nextOutput + batchReward
+        
+        #TD stands for temperal different
+        TdLoss = F.smooth_l1_loss(outputs, target)
+        
+        #Use optimizer to perform gradient descent and update the weights
+        #we need to initialize each time of the loop for the optimizer
+        self.optimizer.zero_grad()
+        
+        #Then we perform backward propagation
+        #retaun variables is to free some of the memory
+        #better in performance
+        TdLoss.backward(retain_variables = True)
+        
+        #Then we update the weights
+        self.optimizer.step()
         
         
         
