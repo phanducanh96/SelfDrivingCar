@@ -93,7 +93,7 @@ class Dqn():
         #Initialize with the empty list
         self.rewardWindow = []
         self.model = Network(inputSize, nbAction)
-        self.memory = ReolayMemory(100000)
+        self.memory = ReplayMemory(100000)
         
         #There are many and many optimizer we can choose from optim
         #we are connecting the Adam optimizer with the neural network class
@@ -108,14 +108,14 @@ class Dqn():
         #neural network and nural network only accepts batch type.
         #Long story short, we create a torch tensor and a dimension responding to a batch in a
         #first dimension
-        self.last_state = torch.Tensor(input_size).unsqueeze(0)
+        self.lastState = torch.Tensor(input_size).unsqueeze(0)
         
         #We have 3 actions to begin with and they are the changing of the car's angle
         #Its either 0, 20 or -20; so, we can put it 0 as an initialization
-        self.last_action = 0
-        self.last_reward = 0
+        self.lastAction = 0
+        self.lastReward = 0
         
-    def select_action(self, state):
+    def selectAction(self, state):
         #Soft max function (best action to play but at the same time, explore other actions)
         #We convert the torch tensor state to a tensor variable
         #We dont want all the gradient and graph of all computation of the nn module; so we add volitile = true
@@ -133,7 +133,7 @@ class Dqn():
         #the batch
         return action.data[0,0]
     
-    def learn(self, batchSize, batchNextState, batchReward, batchAction):
+    def learn(self, batchState, batchNextState, batchReward, batchAction):
         #We only want 1 action, the chosen one so we use the function gather
         #Batch Action doesnt have a fake dimension; so we want to add into it so it can match with
         #the batch state
@@ -167,8 +167,61 @@ class Dqn():
         #Then we update the weights
         self.optimizer.step()
         
+    def update(self, reward, newSignal):
+        #Creating new state by converting the new signal into a torch tensor
+        #Again, add a fake dimension responding to the batch
+        newState = torch.Tensor(newSignal).float().unsqueeze(0)
+        #We have to convert the lastAction and lastReward variables to torch tensors
+        #For the lastAction, its an int so we have to cast it; but for the last reward, its a float,
+        #so just leave it
+        self.memory.push(self.lastState, newState, torch.LongTensor([int(self.lastAction)]), torch.LongTensor([self.lastReward]))
+        #Qw place the new action after reaching the new state
+        action = self.selectAction(newState)
+        
+        if len(self.memory.memory) > 100:
+            #Return all the variables
+            batchState, batchNextState, batchReward, batchAction = self.memory.sample(100)
+            self.learn(batchState, batchNextState, batchReward, batchAction)
+        #update last state and last action since we are now moving on to the new state and the new
+        #action
+        self.lastAction = action
+        self.lastState = newState
+        #reward is calculated in map.py (conditional if else)
+        self.lastReward = reward
+        #update the reward window by appending the reward to the window
+        self.rewardWindow.append(reward)
+        
+        #By doing this, we have a fixed size of the window
+        #save memory and time
+        if len(self.rewardWindow) > 1000:
+            del self.reward_window[0]
         
         
+        return action
+    
+    def score(self):
+        #compute the mean of all the reward in the reward window
+        #Get the sum then devided by the size of the window
+        #We have a + 1 so that the donominator won't be 0 at any time
+        return sum(self.rewardWindow) / (len(self.rewardWindow)+1)
+    
+    #For this function, we want to save the weight of the model, which is the memory
+    #and the optimizer
+    def save(self):
+        torch.save({'stateDict': self.model.state_dict, 
+                    'optimizer': self.optimizer.state_dict,}
+                    , 'lastBrain.pth')
+        
+    #Load what we saved before
+    def load(self):
+        if os.path.isfile('lastBrain.pth'):
+            print("=> loading checkpoint...")
+            checkpoint = torch.load('lastBrain.pth')
+            self.model.load_state_dict(checkpoint['stateDict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+            print("done!")
+        else:
+            print("No checkpoint b!tch")
         
         
         
