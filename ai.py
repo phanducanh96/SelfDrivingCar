@@ -108,7 +108,7 @@ class Dqn():
         #neural network and nural network only accepts batch type.
         #Long story short, we create a torch tensor and a dimension responding to a batch in a
         #first dimension
-        self.lastState = torch.Tensor(input_size).unsqueeze(0)
+        self.lastState = torch.Tensor(inputSize).unsqueeze(0)
         
         #We have 3 actions to begin with and they are the changing of the car's angle
         #Its either 0, 20 or -20; so, we can put it 0 as an initialization
@@ -120,9 +120,10 @@ class Dqn():
         #We convert the torch tensor state to a tensor variable
         #We dont want all the gradient and graph of all computation of the nn module; so we add volitile = true
         #Save memory and performance
-        probs = F.softmax(self.model(Variable(state), volatile = True)*7) 
+        #If we set the temperature to 0, the AI would not activate
+        probs = F.softmax(self.model(Variable(state, volatile = True))*100) 
         
-        #Temperature = 7
+        #Temperature = 100
         #Temperature variable represents the certainty of which action is going to play
         #Example, we have softmax([1,2,3]*1) = [0.04, 0.11, 0.850]. Then increasing temp to 3 we have
         #softmax([1,2,3]*3) = [0, 0.02, 0.98]
@@ -174,13 +175,13 @@ class Dqn():
         #We have to convert the lastAction and lastReward variables to torch tensors
         #For the lastAction, its an int so we have to cast it; but for the last reward, its a float,
         #so just leave it
-        self.memory.push(self.lastState, newState, torch.LongTensor([int(self.lastAction)]), torch.LongTensor([self.lastReward]))
+        self.memory.push((self.lastState, newState, torch.LongTensor([int(self.lastAction)]), torch.Tensor([self.lastReward])))
         #Qw place the new action after reaching the new state
         action = self.selectAction(newState)
         
         if len(self.memory.memory) > 100:
             #Return all the variables
-            batchState, batchNextState, batchReward, batchAction = self.memory.sample(100)
+            batchState, batchNextState, batchAction, batchReward  = self.memory.sample(100)
             self.learn(batchState, batchNextState, batchReward, batchAction)
         #update last state and last action since we are now moving on to the new state and the new
         #action
@@ -194,7 +195,7 @@ class Dqn():
         #By doing this, we have a fixed size of the window
         #save memory and time
         if len(self.rewardWindow) > 1000:
-            del self.reward_window[0]
+            del self.rewardWindow[0]
         
         
         return action
